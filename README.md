@@ -1,5 +1,7 @@
 [![Build status](https://ci.appveyor.com/api/projects/status/qndryf0f3x64qaj4/branch/main?svg=true)](https://ci.appveyor.com/project/marinaustinovich/ahj-homeworks-rxjs-posts-with-comments-front/branch/main)
 
+deployment: https://marinaustinovich.github.io/ahj-homeworks-rxjs_Posts-with-comments-front/
+
 ## Posts with comments
 
 ### Легенда

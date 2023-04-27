@@ -1,6 +1,6 @@
-import { interval, mergeMap, forkJoin } from 'rxjs';
+import { interval, mergeMap, forkJoin, of } from 'rxjs';
 import { ajax } from 'rxjs/ajax';
-import { switchMap, take, finalize } from 'rxjs/operators';
+import { switchMap, take, finalize, catchError } from 'rxjs/operators';
 const dayjs = require('dayjs');
 
 interface CommentData {
@@ -66,10 +66,14 @@ export default class Widget {
             });
           return forkJoin(postWithCommentsObservables);
         }),
+        catchError(error => {
+          console.error('Error:', error);
+          return of(error);
+        }),
         finalize(() => {
           console.log('Запросы на сервер остановлены после 5 итераций');
         })
-      )    
+      )
       .subscribe(
         (postsWithComments: any) => {
           console.log('Data received:', postsWithComments);
@@ -86,12 +90,12 @@ export default class Widget {
   addPost(data: PostWithComments) {
     const postsList = this.container.querySelector('.posts');
     const post = this.createPostElement(data);
-    
+
     data.comments.forEach((comment: CommentData) => this.createCommentElement(comment, post));
-  
+
     if (postsList) {
       postsList.insertBefore(post, postsList.firstChild);
-    }   
+    }
   }
 
   createPostElement(data: PostWithComments) {
@@ -117,7 +121,7 @@ export default class Widget {
 
     return post;
   }
-  
+
   createCommentElement(data: CommentData, el: HTMLElement) {
     const commentsList = el.querySelector('.comments');
       const commentEl = document.createElement("div");

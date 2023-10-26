@@ -1,7 +1,7 @@
 import Widget from "./Widget";
 
-/* eslint-disable */
-console.log('it works!');
+const container = document.getElementById("posts-container");
+const url = "https://posts-with-comments-back.netlify.app/posts/";
+const widget = new Widget(container, url);
 
-new Widget(document.getElementById('posts-container'), 'https://posts-with-comments-back.netlify.app/posts/');
-
+widget.init();

@@ -16,7 +16,7 @@ deployment: https://marinaustinovich.github.io/ahj-homeworks-rxjs_Posts-with-com
 
 #### Серверная часть
 
-Разработайте демо REST-сервер со следующими endpoint:
+Разработайте демо REST-сервер со следующими endpoint-ами:
 * GET /posts/latest — список последних постов (не более 10) в формате:
 ```json
 {

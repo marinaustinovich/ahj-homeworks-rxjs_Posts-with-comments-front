@@ -10,11 +10,12 @@ body {
 }
 
 .container {
+  display: flex;
+  gap: 10px;
   background-color: #ddddd6;
   border: 1px solid #402525;
   border-radius: 0.75rem;
   padding: 3rem;
-  margin-bottom: 1rem;
 }
 
 h1 {

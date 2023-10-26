@@ -1,7 +1,14 @@
-import { interval, mergeMap, forkJoin, of } from 'rxjs';
-import { ajax } from 'rxjs/ajax';
-import { switchMap, take, finalize, catchError } from 'rxjs/operators';
-const dayjs = require('dayjs');
+import { Observable, of, forkJoin, interval } from "rxjs";
+import {
+  mergeMap,
+  catchError,
+  take,
+  finalize,
+  switchMap,
+} from "rxjs/operators";
+import { ajax } from "rxjs/ajax";
+
+const dayjs = require("dayjs");
 
 interface CommentData {
   author_id: string;
@@ -25,18 +32,28 @@ interface PostWithComments extends PostData {
   comments: CommentData[];
 }
 
+interface ApiResponse<T> {
+  data: T;
+}
+
 export default class Widget {
   container: HTMLElement;
-  url : string;
+  url: string;
+  postsList: HTMLElement | null;
 
-  constructor(container : HTMLElement | null, url : string) {
+  constructor(container: HTMLElement | null, url: string) {
     if (!container) {
-      throw new Error('Container element must not be null');
+      throw new Error("Container element must not be null");
     }
 
     this.container = container;
     this.url = url;
+    this.postsList = null;
+  }
+
+  init() {
     this.drawUi();
+    this.updateList();
   }
 
   drawUi() {
@@ -44,63 +61,72 @@ export default class Widget {
       <h2>Posts with comments</h2>
       <div class="posts"></div>
     `;
-    this.updateList();
+
+    this.postsList = this.container.querySelector(".posts");
   }
 
   updateList() {
     Widget.getDataWithInterval(this.url, 5000)
       .pipe(
-        take(5), // Ограничиваем количество запросов до 5
-        mergeMap((response: any) => {
+        take(5),
+        mergeMap((response: ApiResponse<PostData[]>) => {
           const posts = response.data;
-          // Загружаем комментарии для каждого поста
+
           const postWithCommentsObservables = posts.map((post: PostData) => {
-            const postWithComments: PostWithComments = { ...post, comments: [] }; // Создаем объект PostWithComments
+            const postWithComments: PostWithComments = {
+              ...post,
+              comments: [],
+            };
             return Widget.getCommentsForPost(this.url, post.author_id).pipe(
-              mergeMap((comments: any) => {
-                // Добавляем комментарии к посту
-                postWithComments.comments = comments.data;
-                return [postWithComments];
+              mergeMap((commentsResponse: ApiResponse<CommentData[]>) => {
+                postWithComments.comments = commentsResponse.data;
+                return of(postWithComments);
               })
-            )
-            });
+            );
+          });
           return forkJoin(postWithCommentsObservables);
         }),
-        catchError(error => {
-          console.error('Error:', error);
-          return of(error);
+        catchError((error) => {
+          console.error("Error:", error);
+          return of([]);
         }),
         finalize(() => {
-          console.log('Запросы на сервер остановлены после 5 итераций');
+          console.log("Запросы на сервер остановлены после 5 итераций");
         })
       )
-      .subscribe(
-        (postsWithComments: any) => {
-          console.log('Data received:', postsWithComments);
-          postsWithComments.forEach((post: PostWithComments) => {
+      .subscribe({
+        next: (postsWithComments: PostWithComments[]) => {
+          postsWithComments.forEach((post) => {
             this.addPost(post);
           });
         },
-        error => {
-          console.error('Error:', error);
-        }
-      );
+        error: (error: any) => {
+          console.error("Unhandled error:", error);
+        },
+        complete: () => {
+          console.log("Observable completed");
+        },
+      });
+  }
+
+  static getCommentsForPost(url: string, postId: string) {
+    const commentsUrl = `${url}${postId}/comments/latest`;
+    return ajax.getJSON<ApiResponse<CommentData[]>>(commentsUrl);
   }
 
   addPost(data: PostWithComments) {
-    const postsList = this.container.querySelector('.posts');
     const post = this.createPostElement(data);
 
-    data.comments.forEach((comment: CommentData) => this.createCommentElement(comment, post));
+    data.comments.forEach((comment: CommentData) =>
+      this.createCommentElement(comment, post)
+    );
 
-    if (postsList) {
-      postsList.insertBefore(post, postsList.firstChild);
-    }
+    this.postsList?.prepend(post);
   }
 
   createPostElement(data: PostWithComments) {
-    const post = document.createElement('div');
-    post.classList.add('post');
+    const post = document.createElement("div");
+    post.classList.add("post");
     post.innerHTML = `
       <div class="wrapper-data-author">
         <img src="${data.avatar}" class="avatar">
@@ -123,10 +149,10 @@ export default class Widget {
   }
 
   createCommentElement(data: CommentData, el: HTMLElement) {
-    const commentsList = el.querySelector('.comments');
-      const commentEl = document.createElement("div");
-      commentEl.classList.add('comment-wrapper');
-      commentEl.innerHTML = `
+    const commentsList = el.querySelector(".comments");
+    const commentEl = document.createElement("div");
+    commentEl.classList.add("comment-wrapper");
+    commentEl.innerHTML = `
         <img src="${data.avatar}" class="avatar-comment">
         <div class="wrapper-content-comment">
           <span class="author-comment">${data.author}</span>
@@ -135,27 +161,27 @@ export default class Widget {
         <div class="timestamp-comment">${Widget.formatTime(data.created)}</div>
       `;
 
-      if (commentsList) {
-        commentsList.appendChild(commentEl);
-      }
+    if (commentsList) {
+      commentsList.appendChild(commentEl);
+    }
   }
 
-  static getCommentsForPost(url: string, postId: string) {
-    const commentsUrl = `${url}${postId}/comments/latest`;
-    return ajax.getJSON(commentsUrl);
-  }
-
-  static getDataWithInterval(url : string, intervalTime : number) {
+  static getDataWithInterval(
+    url: string,
+    intervalTime: number
+  ): Observable<ApiResponse<PostData[]>> {
     return interval(intervalTime).pipe(
-      switchMap(() => ajax.getJSON(`${url}latest`))
+      switchMap(() => ajax.getJSON<ApiResponse<PostData[]>>(`${url}latest`))
     );
   }
 
   static formatTime(timestamp: number) {
-    return dayjs(timestamp).format('HH:mm DD.MM.YY');
+    return dayjs(timestamp).format("HH:mm DD.MM.YY");
   }
 
   static truncateSubject(subject: string, maxLength: number): string {
-    return subject.length > maxLength ? subject.slice(0, maxLength - 1) + '…' : subject;
+    return subject.length > maxLength
+      ? subject.slice(0, maxLength - 1) + "…"
+      : subject;
   }
 }

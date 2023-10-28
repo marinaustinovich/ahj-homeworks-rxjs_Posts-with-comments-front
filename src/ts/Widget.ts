@@ -1,74 +1,54 @@
-import { Observable, of, forkJoin, interval } from "rxjs";
-import {
-  mergeMap,
-  catchError,
-  take,
-  finalize,
-  switchMap,
-} from "rxjs/operators";
-import { ajax } from "rxjs/ajax";
+import { Subscription, of, forkJoin } from "rxjs";
+import { mergeMap, catchError, take, finalize } from "rxjs/operators";
+import { DataService } from "./DataService";
+import { DOMService } from "./DOMService";
+import { ApiResponse, CommentData, PostData, PostWithComments } from "./types";
 
-const dayjs = require("dayjs");
-
-interface CommentData {
-  author_id: string;
-  author: string;
-  content: string;
-  avatar: string;
-  created: number;
-}
-
-interface PostData {
-  author_id: string;
-  author: string;
-  title: string;
-  subject: string;
-  image: string;
-  avatar: string;
-  created: number;
-}
-
-interface PostWithComments extends PostData {
-  comments: CommentData[];
-}
-
-interface ApiResponse<T> {
-  data: T;
-}
+const UPDATE_INTERVAL = 5000;
+const MAX_UPDATES = 5;
 
 export default class Widget {
-  container: HTMLElement;
-  url: string;
-  postsList: HTMLElement | null;
+  private domService: DOMService;
+  private dataService: DataService;
+  private container: HTMLElement;
+  private url: string;
+  private postsList: HTMLElement | null;
+  private subscription: Subscription | null = null;
 
   constructor(container: HTMLElement | null, url: string) {
     if (!container) {
       throw new Error("Container element must not be null");
     }
-
     this.container = container;
+    this.subscription = null;
     this.url = url;
     this.postsList = null;
+    this.domService = new DOMService();
+    this.dataService = new DataService(this.url);
   }
 
-  init() {
+  init(): void {
     this.drawUi();
     this.updateList();
   }
 
   drawUi() {
-    this.container.innerHTML = `
-      <h2>Posts with comments</h2>
-      <div class="posts"></div>
-    `;
+    const h2 = document.createElement("h2");
+    h2.textContent = "Posts with comments";
 
+    const postsDiv = document.createElement("div");
+    postsDiv.classList.add("posts");
+
+    this.container.appendChild(h2);
+    this.container.appendChild(postsDiv);
     this.postsList = this.container.querySelector(".posts");
   }
 
   updateList() {
-    Widget.getDataWithInterval(this.url, 5000)
+    this.subscription = this.dataService
+      .getDataWithInterval(UPDATE_INTERVAL)
       .pipe(
-        take(5),
+        take(MAX_UPDATES),
         mergeMap((response: ApiResponse<PostData[]>) => {
           const posts = response.data;
 
@@ -77,7 +57,7 @@ export default class Widget {
               ...post,
               comments: [],
             };
-            return Widget.getCommentsForPost(this.url, post.author_id).pipe(
+            return this.dataService.getCommentsForPost(post.author_id).pipe(
               mergeMap((commentsResponse: ApiResponse<CommentData[]>) => {
                 postWithComments.comments = commentsResponse.data;
                 return of(postWithComments);
@@ -109,79 +89,17 @@ export default class Widget {
       });
   }
 
-  static getCommentsForPost(url: string, postId: string) {
-    const commentsUrl = `${url}${postId}/comments/latest`;
-    return ajax.getJSON<ApiResponse<CommentData[]>>(commentsUrl);
+  destroy() {
+    this.subscription?.unsubscribe();
   }
 
   addPost(data: PostWithComments) {
-    const post = this.createPostElement(data);
+    const post = this.domService.createPostElement(data);
 
     data.comments.forEach((comment: CommentData) =>
-      this.createCommentElement(comment, post)
+      this.domService.createCommentElement(comment, post)
     );
 
     this.postsList?.prepend(post);
-  }
-
-  createPostElement(data: PostWithComments) {
-    const post = document.createElement("div");
-    post.classList.add("post");
-    post.innerHTML = `
-      <div class="wrapper-data-author">
-        <img src="${data.avatar}" class="avatar">
-        <div class="data-author">
-          <span class="author">${data.author}</span>
-          <span class="timestamp">${Widget.formatTime(data.created)}</span>
-        </div>
-      </div>
-      <div class="content-post">
-        <h3>${data.title}</h3>
-        <img src="${data.image}" class="image-post">
-      </div>
-      <div class="comments">
-        <h4>Latest comments</h4>
-      </div>
-      <button class="load-comments">Load More</button>
-    `;
-
-    return post;
-  }
-
-  createCommentElement(data: CommentData, el: HTMLElement) {
-    const commentsList = el.querySelector(".comments");
-    const commentEl = document.createElement("div");
-    commentEl.classList.add("comment-wrapper");
-    commentEl.innerHTML = `
-        <img src="${data.avatar}" class="avatar-comment">
-        <div class="wrapper-content-comment">
-          <span class="author-comment">${data.author}</span>
-          <span class="content-comment">${data.content}</span>
-        </div>
-        <div class="timestamp-comment">${Widget.formatTime(data.created)}</div>
-      `;
-
-    if (commentsList) {
-      commentsList.appendChild(commentEl);
-    }
-  }
-
-  static getDataWithInterval(
-    url: string,
-    intervalTime: number
-  ): Observable<ApiResponse<PostData[]>> {
-    return interval(intervalTime).pipe(
-      switchMap(() => ajax.getJSON<ApiResponse<PostData[]>>(`${url}latest`))
-    );
-  }
-
-  static formatTime(timestamp: number) {
-    return dayjs(timestamp).format("HH:mm DD.MM.YY");
-  }
-
-  static truncateSubject(subject: string, maxLength: number): string {
-    return subject.length > maxLength
-      ? subject.slice(0, maxLength - 1) + "…"
-      : subject;
   }
 }
